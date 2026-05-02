@@ -112,3 +112,77 @@ def crossover_populatie(pop: np.ndarray, valori: np.ndarray, cost: np.ndarray, p
             c1, c2 = crossover_PMX(pop[i], pop[i + 1])
             v1, v2 = functie_fitness(cost, c1), functie_fitness(cost, c2)
         else:
+            c1, c2 = pop[i].copy(), pop[i + 1].copy()
+            v1, v2 = valori[i], valori[i + 1]
+        po[i], po[i + 1] = c1, c2
+        val[i], val[i + 1] = v1, v2
+    return po, val
+
+# =============================================================================
+# 3. SELECȚIE (SUS & Elitism)
+# =============================================================================
+def fps(qual: np.ndarray, dim: int) -> np.ndarray:
+    """Fitness Proportionate Selection - Distributie cumulata."""
+    prob = qual / np.sum(qual)
+    return np.cumsum(prob)
+
+def sigmafps(qual: np.ndarray, dim: int) -> np.ndarray:
+    """Scalare Sigma pentru a evita convergenta prematura."""
+    med, var = np.mean(qual), np.std(qual)
+    newq = np.array([max(0, qual[i] - (med - 2 * var)) for i in range(dim)])
+    if np.sum(newq) == 0:
+        return fps(qual, dim)
+    return fps(newq, dim)
+
+def SUS(pop: np.ndarray, qual: np.ndarray, dim: int, n: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Stochastic Universal Sampling: Selectie cu variatie scazuta."""
+    spop = pop.copy(dim)
+    squal = np.zeros(dim)
+    qfps = sigmafps(qual, dim)
+    pas = 1.0 / dim
+    r = np.random.uniform(0, pas)
+    k, i = 0, 0
+    while k < dim:
+        while r <= qfps[i]:
+            spop[k][:] = pop[i][:]
+            squal[k] = qual[i]
+            r += pas
+            k += 1
+        i += 1
+    return spop, squal
+
+def elitism(pop_c: np.ndarray, qual_c: np.ndarray, pop_mo: np.ndarray,
+            qual_mo: np.ndarray, dim: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Pastreaza cel mai bun individ din generatia parinte in generatia urmas."""
+    pop_rez, qual_rez = np.copy(pop_mo), np.copy(qual_mo)
+    if np.max(qual_c) > np.max(qual_mo):
+        imax = np.argmax(qual_c)
+        ir = np.random.randint(dim)
+        pop_rez[ir] = pop_c[imax].copy()
+        qual_rez[ir] = qual_c[imax]
+    return pop_rez, qual_rez
+
+# =============================================================================
+# MAIN
+# =============================================================================
+
+if __name__ == "__main__":
+    # Parametri
+    PM, PC, DIM = 0.2, 0.8, 30
+
+    # 1. Generare (necesita fisierul costuri_TSP.txt)
+    try:
+        pop, val, cost_mat = genereaza_populatie("costuri_TSP.txt", DIM)
+        print(f"Cel mai bun initial: {np.max(val)}")
+
+        # 2. Variatie
+        p_mut, v_mut = mutatie_populatie(pop, val, cost_mat, PM)
+        p_cross, v_cross = crossover_populatie(pop, val, cost_mat, PC)
+
+        # 3. Selectie
+        parinti, v_parinti = SUS(pop, val, DIM, len(cost_mat))
+        populatie_noua, v_nou = elitism(pop, val, p_mut, v_mut, DIM)
+
+        print(f"Cel mai bun final (dupa o iteratie): {np.max(v_nou)}")
+    except OSError:
+        print("Fisierul 'costuri_TSP.txt' nu a fost gasit pentru test.")
